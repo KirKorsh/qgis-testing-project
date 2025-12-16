@@ -1,20 +1,12 @@
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.orm import Session
-from .database import SessionLocal, engine, Base
-from . import models, crud, schemas
+from fastapi import FastAPI
+from app.database import engine, Base
+from app.models.feature import Feature
+from app.api import feature as feature_router
 
 app = FastAPI()
 
+# Создаём таблицы
 Base.metadata.create_all(bind=engine)
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-@app.post("/features")
-def add_feature(feature: schemas.FeatureCreate, db: Session = Depends(get_db)):
-    db_feature = crud.create_feature(db, feature.dict())
-    return {"id": db_feature.id}
+# Подключаем роутер
+app.include_router(feature_router.router)
