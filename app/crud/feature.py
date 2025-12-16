@@ -38,3 +38,11 @@ def get_stats(db: Session):
     for geom_type, count in counts:
         stats[geom_type] = count
     return {k.lower() + "s": v for k, v in stats.items()}
+
+def delete_feature(db: Session, feature_id: int):
+    feature = db.query(Feature).filter(Feature.id == feature_id).first()
+    if feature:
+        db.delete(feature)
+        db.commit()
+        return True
+    return False
