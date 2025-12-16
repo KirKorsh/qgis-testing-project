@@ -22,3 +22,7 @@ def add_feature(feature: schemas.FeatureCreate, db: Session = Depends(get_db)):
 @router.get("/features")
 def read_features(db: Session = Depends(get_db)):
     return crud.get_features(db)
+
+@router.get("/stats")
+def read_stats(db: Session = Depends(get_db)):
+    return crud.get_stats(db)

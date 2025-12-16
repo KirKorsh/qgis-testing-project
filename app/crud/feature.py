@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.models.feature import Feature
 from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import shape
@@ -26,3 +27,14 @@ def get_features(db: Session):
             "properties": {"geom_type": f.geom_type}
         })
     return {"type": "FeatureCollection", "features": result}
+
+def get_stats(db: Session):
+    counts = (
+        db.query(Feature.geom_type, func.count(Feature.id))
+        .group_by(Feature.geom_type)
+        .all()
+    )
+    stats = {"Point": 0, "LineString": 0, "Polygon": 0}
+    for geom_type, count in counts:
+        stats[geom_type] = count
+    return {k.lower() + "s": v for k, v in stats.items()}
