@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Dashboard</title>
+    <script src="{{ url_for('static', path='main.js') }}"></script>
+</head>
+<body>
+    <h1>Feature Statistics</h1>
+
+    <ul>
+        <li>Points: {{ stats.points }}</li>
+        <li>Lines: {{ stats.linestrings }}</li>
+        <li>Polygons: {{ stats.polygons }}</li>
+    </ul>
+
+    <h2>Features</h2>
+    <ul>
+        {% for f in features %}
+        <li>
+            ID: {{ f.id }},
+            Type: {{ f.properties.geom_type }}
+            <button onclick="deleteFeature('{{ f.id }}')">Delete</button>
+        </li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
