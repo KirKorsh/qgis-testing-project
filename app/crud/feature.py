@@ -58,7 +58,7 @@ def get_stats(db: Session):
 def delete_feature(db: Session, feature_id: int):
     print(f" [DELETE] Начало удаления для feature_id={feature_id}")
     
-    # 1. Пробуем найти объект
+    #  Пробуем найти объект
     print(f"   Выполняю запрос: db.query(Feature).filter(Feature.id == {feature_id}).first()")
     feature = db.query(Feature).filter(Feature.id == feature_id).first()
     
@@ -73,7 +73,7 @@ def delete_feature(db: Session, feature_id: int):
             return True
         except Exception as e:
             print(f"   ОШИБКА при commit: {e}")
-            db.rollback()  # Важно откатить при ошибке
+            db.rollback()  # откат при ошибке
             return False
     else:
         print(f"   Объект с id={feature_id} НЕ НАЙДЕН в БД.")

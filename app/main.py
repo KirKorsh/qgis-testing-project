@@ -9,10 +9,10 @@ from app.dependencies import get_db
 
 app = FastAPI()
 
-# Подключаем роутеры API
+# Подключание роутеров API
 app.include_router(feature_router.router)
 
-# Подключаем шаблоны и статические файлы
+# Подключение шаблоны и статические файлы
 templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
