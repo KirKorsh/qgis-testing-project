@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.crud import feature as crud
 from app.api import feature as feature_router
+from app.dependencies import get_db
 
 app = FastAPI()
 
@@ -15,13 +16,6 @@ app.include_router(feature_router.router)
 templates = Jinja2Templates(directory="app/templates")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-# Зависимость для сессии
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @app.get("/")
 def root(request: Request):
@@ -31,11 +25,9 @@ def root(request: Request):
     )
 
 @app.get("/admin")
-def admin_dashboard(request: Request):
-    db = SessionLocal()
-
-    stats = crud.get_stats(db)
-    features_collection = crud.get_features(db)
+def admin_dashboard(request: Request, db: Session = Depends(get_db)): 
+    stats = crud.get_stats(db)           
+    features_collection = crud.get_features(db)  
 
     return templates.TemplateResponse(
         "admin.html",

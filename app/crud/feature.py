@@ -15,34 +15,67 @@ def create_feature(db: Session, feature_data):
     db.refresh(db_feature)
     return db_feature
 
+print(" МОДУЛЬ: Модуль crud.feature загружен")
 def get_features(db: Session):
-    features = db.query(Feature).all()
-    result = []
-    for f in features:
-        geom_shape = to_shape(f.geom)
-        result.append({
-            "type": "Feature",
-            "id": f.id,
-            "geometry": geom_shape.__geo_interface__,
-            "properties": {"geom_type": f.geom_type}
-        })
-    return {"type": "FeatureCollection", "features": result}
+    print("CRUD: Вызвана get_features")
+    try:
+        features = db.query(Feature).all()
+        print(f"   Найдено объектов: {len(features)}")
+        result = []
+        for f in features:
+            geom_shape = to_shape(f.geom)
+            result.append({
+                "type": "Feature",
+                "id": f.id,
+                "geometry": geom_shape.__geo_interface__,
+                "properties": {"geom_type": f.geom_type}
+        }) 
+            pass
+        print(" CRUD: get_features завершена успешно")
+        return {"type": "FeatureCollection", "features": result}
+    except Exception as e:
+        print(f" CRUD: ОШИБКА в get_features: {e}")
+        raise
 
 def get_stats(db: Session):
-    counts = (
-        db.query(Feature.geom_type, func.count(Feature.id))
-        .group_by(Feature.geom_type)
-        .all()
-    )
-    stats = {"Point": 0, "LineString": 0, "Polygon": 0}
-    for geom_type, count in counts:
-        stats[geom_type] = count
-    return {k.lower() + "s": v for k, v in stats.items()}
+    print(" CRUD: Вызвана get_stats")
+    try:
+        counts = (
+            db.query(Feature.geom_type, func.count(Feature.id))
+            .group_by(Feature.geom_type)
+            .all()
+        )
+        print(f"   Результат запроса: {counts}")
+        stats = {"Point": 0, "LineString": 0, "Polygon": 0}
+        for geom_type, count in counts:
+            stats[geom_type] = count
+            print(" CRUD: get_stats завершена успешно")
+        return {k.lower() + "s": v for k, v in stats.items()}
+    except Exception as e:
+            print(f" CRUD: ОШИБКА в get_stats: {e}")
+            raise
 
 def delete_feature(db: Session, feature_id: int):
+    print(f" [DELETE] Начало удаления для feature_id={feature_id}")
+    
+    # 1. Пробуем найти объект
+    print(f"   Выполняю запрос: db.query(Feature).filter(Feature.id == {feature_id}).first()")
     feature = db.query(Feature).filter(Feature.id == feature_id).first()
+    
     if feature:
-        db.delete(feature)
-        db.commit()
-        return True
-    return False
+        print(f"   Объект НАЙДЕН! id={feature.id}, geom_type={feature.geom_type}")
+        print(f"   Пробую db.delete(feature)...")
+        try:
+            db.delete(feature)
+            print(f"   Пробую db.commit()...")
+            db.commit()
+            print(f"   Успешно удален из БД!")
+            return True
+        except Exception as e:
+            print(f"   ОШИБКА при commit: {e}")
+            db.rollback()  # Важно откатить при ошибке
+            return False
+    else:
+        print(f"   Объект с id={feature_id} НЕ НАЙДЕН в БД.")
+        print(f"   Список ID в таблице features: {[f.id for f in db.query(Feature.id).all()]}")
+        return False
