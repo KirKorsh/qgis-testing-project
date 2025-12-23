@@ -29,28 +29,46 @@ def run_command(cmd, env=None, capture_output=True):
         return False
 
 def check_postgresql_connection(host, port, user, password):
+    """Проверка подключения через SQLAlchemy"""
     print("Проверка подключения к PostgreSQL...")
     
     try:
-        # Создаем движок SQLAlchemy для подключения к postgres
+        # Формируем URL подключения
+        db_url = f"postgresql://{user}:{password}@{host}:{port}/postgres"
+        
+        # Создаем движок SQLAlchemy
         from sqlalchemy import create_engine, text
         
-        # Формируем URL подключения к стандартной БД postgres
-        db_url = f"postgresql://{user}:{password}@{host}:{port}/postgres"
-        engine = create_engine(db_url, echo=False)
+        engine = create_engine(db_url, echo=False, pool_pre_ping=True)
         
-        # Пробуем выполнить простой запрос
+        # Пробуем подключиться
         with engine.connect() as connection:
+            # Выполняем простой запрос
             result = connection.execute(text("SELECT 1"))
-            result.scalar()
-        
-        print("  Подключение к PostgreSQL успешно")
-        return True
-        
+            test_result = result.scalar()
+            
+            if test_result == 1:
+                print("  Подключение к PostgreSQL успешно")
+                return True
+            else:
+                print("  Неожиданный результат проверки")
+                return False
+                
     except Exception as e:
-        print(f"  Не удалось подключиться к PostgreSQL: {e}")
+        error_msg = str(e)
+        print(f"  Не удалось подключиться к PostgreSQL")
+        print(f"  Ошибка: {error_msg[:100]}")
         print(f"  Убедитесь, что PostgreSQL запущен на {host}:{port}")
         print(f"  Пользователь: {user}, пароль: {'*' * len(password)}")
+        
+        # Подсказки для частых ошибок
+        if "password authentication failed" in error_msg:
+            print(f"  Подсказка: Неверный пароль для пользователя {user}")
+        elif "could not connect to server" in error_msg:
+            print(f"  Подсказка: PostgreSQL не запущен или недоступен")
+        elif "database" in error_msg and "does not exist" in error_msg:
+            print(f"  Подсказка: База данных 'postgres' не существует")
+        
         return False
 
 def create_database(host, port, user, password, db_name):
@@ -59,7 +77,7 @@ def create_database(host, port, user, password, db_name):
     try:
         from sqlalchemy import create_engine, text
         
-        # Сначала подключаемся к стандартной БД postgres
+        # Подключаемся к стандартной БД postgres для создания новой
         admin_db_url = f"postgresql://{user}:{password}@{host}:{port}/postgres"
         admin_engine = create_engine(admin_db_url)
         
@@ -74,15 +92,15 @@ def create_database(host, port, user, password, db_name):
                 print(f"  База данных {db_name} уже существует")
                 return True
         
-        # Создаем новую БД
+        # Создание новой БД
         with admin_engine.connect() as conn:
-            # Отключаем автокоммит для SQLAlchemy 2.0
+            # Закрываем транзакцию перед созданием БД
             conn.execute(text("COMMIT"))
             conn.execute(text(f"CREATE DATABASE {db_name}"))
         
         print(f"  База данных {db_name} создана")
         
-        # Подключаемся к новой БД и создаем расширение PostGIS
+        # Подключение к новой БД для создания PostGIS
         new_db_url = f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
         new_engine = create_engine(new_db_url)
         
@@ -95,7 +113,6 @@ def create_database(host, port, user, password, db_name):
     except Exception as e:
         print(f"  Не удалось создать базу данных {db_name}: {e}")
         return False
-
 def setup_virtualenv():
     print("Создание виртуального окружения...")
     
@@ -172,7 +189,6 @@ POSTGRES_PASSWORD=1111
 def apply_migrations():
     print("Применение миграций базы данных...")
     
-    # Формирование пути к Python
     if platform.system() == "Windows":
         venv_python_path = "venv\\Scripts\\python"
     else:  # Linux, macOS
@@ -243,13 +259,76 @@ def get_database_config():
     
     return config
 
+def install_minimal_dependencies():
+    print("Установка SQLAlchemy для проверки подключения...")
+    
+    # Определяем путь к pip
+    if platform.system() == "Windows":
+        pip_cmd = "venv\\Scripts\\pip"
+    else:
+        pip_cmd = "venv/bin/pip"
+    
+    # Минимальные зависимости для проверки подключения
+    minimal_deps = [
+        "sqlalchemy>=2.0.23",
+        "psycopg2-binary>=2.9.9"  
+    ]
+    
+    cmd = f"{pip_cmd} install {' '.join(minimal_deps)}"
+    print(f"  Выполняю: {cmd}")
+    
+    return run_command(cmd)
+
+def install_all_dependencies():
+    print("Установка всех зависимостей...")
+    
+    if platform.system() == "Windows":
+        pip_cmd = "venv\\Scripts\\pip"
+    else:
+        pip_cmd = "venv/bin/pip"
+    
+    if os.path.exists("requirements.txt"):
+        return run_command(f"{pip_cmd} install -r requirements.txt")
+    
+    # Полный список зависимостей
+    deps = [
+        "fastapi>=0.104.1",
+        "uvicorn[standard]>=0.24.0",
+        "sqlalchemy>=2.0.23",    
+        "geoalchemy2>=0.14.2",
+        "psycopg2-binary>=2.9.9", 
+        "alembic>=1.12.1",
+        "python-dotenv>=1.0.0",
+        "shapely>=2.0.2"
+    ]
+    
+    cmd = f"{pip_cmd} install {' '.join(deps)}"
+    print(f"  Выполняю: {cmd}")
+    
+    if run_command(cmd):
+        # Сохраняем зависимости
+        run_command(f"{pip_cmd} freeze > requirements.txt")
+        return True
+    
+    return False
+
 def main():
-    print("="*50)
     print("Установка GIS Sync System")
-    print("="*50)
+    
+    # Создаем виртуальное окружение
+    if not setup_virtualenv():
+        print("\nНе удалось создать виртуальное окружение.")
+        return False
+    
+    # Устанавливаем зависимости для проверки БД
+    print("\nУстановка минимальных зависимостей для проверки подключения...")
+    if not install_minimal_dependencies():
+        print("\nНе удалось установить минимальные зависимости.")
+        return False
     
     db_config = get_database_config()
     
+    # Проверка подключения к PostgreSQL
     if not check_postgresql_connection(
         db_config['host'],
         db_config['port'],
@@ -260,6 +339,7 @@ def main():
         print("Убедитесь, что PostgreSQL запущен и доступен.")
         return False
     
+    # Создаем базу данных
     if not create_database(
         db_config['host'],
         db_config['port'],
@@ -270,22 +350,18 @@ def main():
         print("\nНе удалось создать базу данных.")
         return False
     
-    # Создание виртуального окружения
-    if not setup_virtualenv():
-        print("\nНе удалось создать виртуальное окружение.")
-        return False
-    
-    # Установка зависимостей
-    if not install_dependencies():
+    # Устанавливаем  зависимости
+    print("\nУстановка всех зависимостей...")
+    if not install_all_dependencies():
         print("\nНе удалось установить зависимости.")
         return False
     
-    # Настройка окружения
+    #  Настройка окружения
     if not setup_environment(db_config):
         print("\nНе удалось настроить конфигурацию.")
         return False
     
-    # Применение миграции
+    #  Применение миграций
     if not apply_migrations():
         print("\nНе удалось применить миграции.")
         return False
