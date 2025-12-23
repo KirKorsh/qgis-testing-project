@@ -55,7 +55,7 @@ echo.
 echo [INFO] Для остановки сервера нажмите Ctrl+C
 echo.
 
-REM Запуск сервера через Python модуль (более надежно)
+REM Запуск сервера через Python модуль
 venv\Scripts\python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 if %errorlevel% neq 0 (

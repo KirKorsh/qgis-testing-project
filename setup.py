@@ -6,7 +6,7 @@ import time
 from urllib.parse import quote
 
 def run_command(cmd, env=None, capture_output=True, timeout=60):
-    # Исполнение команды через shell с обработкой кодировки Windows
+    # Выполнение команды через shell с обработкой кодировки Windows
     try:
         print(f"  [CMD] {cmd}")
         
@@ -22,13 +22,13 @@ def run_command(cmd, env=None, capture_output=True, timeout=60):
         )
         
         if capture_output:
-            # Вывод stdout если есть
+            # Вывод stdout если есть содержимое
             if result.stdout and result.stdout.strip():
                 for line in result.stdout.strip().split('\n'):
                     if line.strip():
                         print(f"    [OUT] {line}")
             
-            # Вывод stderr если есть ошибка
+            # Вывод stderr при наличии ошибки
             if result.returncode != 0 and result.stderr:
                 for line in result.stderr.strip().split('\n'):
                     if line.strip():
@@ -53,11 +53,11 @@ def create_database(host, port, user, password, db_name):
     try:
         from sqlalchemy import create_engine, text
         
-        # Подключаемся к стандартной БД postgres для создания новой
+        # Подключение к стандартной БД postgres для создания новой
         admin_db_url = f"postgresql://{user}:{password}@{host}:{port}/postgres"
         admin_engine = create_engine(admin_db_url)
         
-        # Проверяем существование БД
+        # Проверка существования БД
         with admin_engine.connect() as conn:
             result = conn.execute(
                 text("SELECT 1 FROM pg_database WHERE datname = :db_name"),
@@ -70,7 +70,7 @@ def create_database(host, port, user, password, db_name):
         
         # Создание новой БД
         with admin_engine.connect() as conn:
-            # Закрываем транзакцию перед созданием БД
+            # Закрытие транзакции перед созданием БД
             conn.execute(text("COMMIT"))
             conn.execute(text(f"CREATE DATABASE {db_name}"))
         
@@ -107,7 +107,7 @@ def setup_virtualenv():
         else:
             print("  Использование существующего окружения")
             
-            # Проверка, что в venv есть python
+            # Проверка наличия python в venv
             if platform.system() == "Windows":
                 python_path = "venv\\Scripts\\python.exe"
             else:
@@ -123,13 +123,13 @@ def setup_virtualenv():
     # Создание нового venv
     print("  Создание нового виртуального окружения...")
     
-    # Используем sys.executable для создания venv
+    # Использование sys.executable для создания venv
     cmd = f'"{sys.executable}" -m venv venv'
     print(f"  Выполнение: {cmd}")
     
     if run_command(cmd, timeout=60):
         # Проверка успешности создания
-        time.sleep(2)  # Даем время для создания файлов
+        time.sleep(2)  # Пауза для создания файлов
         
         if platform.system() == "Windows":
             python_path = "venv\\Scripts\\python.exe"
@@ -210,7 +210,7 @@ POSTGRES_PASSWORD={db_config['password']}
         with open(".env", "w", encoding="utf-8") as f:
             f.write(env_content)
         
-        # Пример без пароля
+        # Создание примера без пароля
         example = f"""POSTGRES_HOST={db_config['host']}
 POSTGRES_PORT={db_config['port']}
 POSTGRES_DB={db_config['db_name']}
@@ -240,7 +240,7 @@ def apply_migrations():
     
     print(f"  Использование Python из venv: {venv_python_path}")
     
-    # 1. ЧТЕНИЕ ДАННЫХ ИЗ .env
+    # Чтение данных из .env
     if not os.path.exists(".env"):
         print("  Ошибка: файл .env не найден")
         return False
@@ -264,7 +264,7 @@ def apply_migrations():
     db_name = config['POSTGRES_DB']
     print(f"  Работа с базой данных: {db_name}")
     
-    # 2. ОБНОВЛЕНИЕ ALEMBIC.INI
+    # Обновление ALEMBIC.INI
     from urllib.parse import quote
     safe_password = quote(config['POSTGRES_PASSWORD'], safe='')
     current_db_url = f"postgresql://{config['POSTGRES_USER']}:{safe_password}@{config['POSTGRES_HOST']}:{config['POSTGRES_PORT']}/{db_name}"
@@ -289,7 +289,6 @@ def apply_migrations():
     
     print(f"  Alembic.ini обновлен для БД: {db_name}")
     
-    # 3. ПРОВЕРКА ФАЙЛА МИГРАЦИИ
     import glob
     migration_files = glob.glob("alembic/versions/*.py")
     
@@ -299,10 +298,10 @@ def apply_migrations():
     
     print(f"  Файлов миграций: {len(migration_files)}")
     
-    # 4. ВЫПОЛНЕНИЕ МИГРАЦИЙ
+    # Выполнение миграций
     print("  Запуск миграций...")
     
-    # Показываем текущий статус миграций
+    # Отображение текущего статуса миграций
     print("  Текущий статус миграций:")
     cmd_current = f'"{venv_python_path}" -m alembic current'
     run_command(cmd_current, timeout=30)
@@ -313,7 +312,7 @@ def apply_migrations():
     if not run_command(cmd_upgrade, timeout=120):
         print("  Ошибка при выполнении миграций")
         
-        # Покажем историю для диагностики
+        # Отображение истории для диагностики
         cmd_history = f'"{venv_python_path}" -m alembic history'
         print("  История миграций:")
         run_command(cmd_history, timeout=30)
@@ -322,11 +321,11 @@ def apply_migrations():
     
     print("  Миграции выполнены")
     
-    # Показываем новый статус
+    # Отображение нового статуса
     print("  Новый статус миграций:")
     run_command(cmd_current, timeout=30)
     
-    # 5. ПРОВЕРКА ТАБЛИЦЫ
+    # Проверка таблицы
     print("  Проверка создания таблицы features...")
     
     python_check = f'''
@@ -342,7 +341,7 @@ try:
     engine = create_engine(db_url)
     
     with engine.connect() as conn:
-        # Проверка 1: Существует ли таблица
+        # Проверка существования таблицы
         result = conn.execute(
             text("SELECT table_name FROM information_schema.tables WHERE table_name = 'features'")
         )
@@ -350,7 +349,7 @@ try:
         if result.rowcount > 0:
             print("[SUCCESS] Таблица 'features' создана!")
             
-            # Проверка 2: Структура таблицы
+            # Проверка структуры таблицы
             result = conn.execute(text("""
                 SELECT column_name, data_type, is_nullable
                 FROM information_schema.columns 
@@ -362,7 +361,7 @@ try:
             for row in result:
                 print(f"  - {{row[0]}}: {{row[1]}} (nullable: {{row[2]}})")
             
-            # Проверка 3: Количество записей
+            # Проверка количества записей
             result = conn.execute(text("SELECT COUNT(*) FROM features"))
             count = result.scalar()
             print(f"Записей в таблице: {{count}}")
@@ -378,7 +377,6 @@ except Exception as e:
     sys.exit(1)
 '''
     
-    # Создаем временный файл для проверки
     import tempfile
     temp_file = None
     try:
@@ -392,7 +390,6 @@ except Exception as e:
         if run_command(check_cmd, timeout=30):
             print("  Проверка завершена успешно")
             
-            # 6. ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА через check_db.py
             print("  Дополнительная проверка через check_db.py...")
             extra_check = f'"{venv_python_path}" check_db.py'
             run_command(extra_check, timeout=30)
@@ -455,7 +452,6 @@ def install_all_dependencies():
     else:
         pip_cmd = "venv/bin/pip"
     
-    # Убираем --progress-bar, оставляем только --disable-pip-version-check
     pip_args = "--disable-pip-version-check"
     
     if os.path.exists("requirements.txt"):
@@ -493,7 +489,7 @@ def run_in_venv(python_code):
     # Создание временного файла с явным указанием кодировки UTF-8
     import tempfile
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
-        # Добавление строки с указанием кодировки В НАЧАЛО файла
+        # Добавление строки с указанием кодировки в начало файла
         f.write('# -*- coding: utf-8 -*-\n')
         f.write(python_code)
         temp_file = f.name
@@ -652,7 +648,7 @@ def main():
         print("\nНе удалось установить SQLAlchemy.")
         return False
     
-    # ПРОВЕРКА ПОДКЛЮЧЕНИЯ через отдельный процесс в venv
+    # Проверка подключения через отдельный процесс в venv
     if not check_postgresql_connection_in_venv(
         db_config['host'],
         db_config['port'],
