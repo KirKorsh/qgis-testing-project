@@ -34,5 +34,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrade schema."""
     op.drop_table('features')
-    # Удаляем расширение PostGIS (осторожно, только если больше не используется)
+    # Удаляем расширение PostGIS
     op.execute('DROP EXTENSION IF EXISTS postgis CASCADE;')

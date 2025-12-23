@@ -9,7 +9,7 @@ echo.
 
 REM Проверка наличия Python
 python --version >nul 2>&1
-if errorlevel 1 (
+if errorlevel 1 ( 
     echo [ERROR] Python не найден в системе.
     echo.
     echo Установите Python с официального сайта:

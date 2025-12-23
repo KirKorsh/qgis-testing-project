@@ -35,4 +35,4 @@ python -c "import sys; print(f'Python версия: {sys.version}')"
 echo ""
 
 # Запуск сервера
-exec uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+exec uvicorn app.main:app --reload --host 0.0.0.0 --port 

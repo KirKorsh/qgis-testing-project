@@ -8,7 +8,7 @@ if not exist "venv\" (
     echo [ERROR] Виртуальное окружение не найдено.
     echo.
     echo Запустите сначала установку:
-    echo   python scripts\setup_database.py
+    echo   python scripts\setup_database.py 
     echo.
     pause
     exit /b 1

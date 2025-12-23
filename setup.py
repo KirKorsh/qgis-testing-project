@@ -5,83 +5,58 @@ import platform
 import time
 from urllib.parse import quote
 
-def run_command(cmd, env=None, capture_output=True):
+def run_command(cmd, env=None, capture_output=True, timeout=60):
+    # Исполнение команды через shell с обработкой кодировки Windows
     try:
+        print(f"  [CMD] {cmd}")
+        
         result = subprocess.run(
             cmd,
             shell=True,
             capture_output=capture_output,
             text=True,
-            encoding='utf-8',
+            encoding='cp1251',
+            errors='replace',
             env=env or os.environ,
-            timeout=30
+            timeout=timeout
         )
         
-        if result.returncode != 0 and capture_output:
-            print(f"  Ошибка: {result.stderr[:200]}")
+        if capture_output:
+            # Вывод stdout если есть
+            if result.stdout and result.stdout.strip():
+                for line in result.stdout.strip().split('\n'):
+                    if line.strip():
+                        print(f"    [OUT] {line}")
+            
+            # Вывод stderr если есть ошибка
+            if result.returncode != 0 and result.stderr:
+                for line in result.stderr.strip().split('\n'):
+                    if line.strip():
+                        print(f"    [ERR] {line}")
+        
         return result.returncode == 0
         
     except subprocess.TimeoutExpired:
-        print(f"  Таймаут выполнения: {cmd}")
+        print(f"  Таймаут выполнения ({timeout}с): {cmd}")
         return False
     except FileNotFoundError:
-        print(f"  Команда не найдена: {cmd.split()[0]}")
+        print(f"  Команда не найдена: {cmd.split()[0] if ' ' in cmd else cmd}")
         return False
-
-def check_postgresql_connection(host, port, user, password):
-    """Проверка подключения через SQLAlchemy"""
-    print("Проверка подключения к PostgreSQL...")
-    
-    try:
-        # Формируем URL подключения
-        db_url = f"postgresql://{user}:{password}@{host}:{port}/postgres"
-        
-        # Создаем движок SQLAlchemy
-        from sqlalchemy import create_engine, text
-        
-        engine = create_engine(db_url, echo=False, pool_pre_ping=True)
-        
-        # Пробуем подключиться
-        with engine.connect() as connection:
-            # Выполняем простой запрос
-            result = connection.execute(text("SELECT 1"))
-            test_result = result.scalar()
-            
-            if test_result == 1:
-                print("  Подключение к PostgreSQL успешно")
-                return True
-            else:
-                print("  Неожиданный результат проверки")
-                return False
-                
     except Exception as e:
-        error_msg = str(e)
-        print(f"  Не удалось подключиться к PostgreSQL")
-        print(f"  Ошибка: {error_msg[:100]}")
-        print(f"  Убедитесь, что PostgreSQL запущен на {host}:{port}")
-        print(f"  Пользователь: {user}, пароль: {'*' * len(password)}")
-        
-        # Подсказки для частых ошибок
-        if "password authentication failed" in error_msg:
-            print(f"  Подсказка: Неверный пароль для пользователя {user}")
-        elif "could not connect to server" in error_msg:
-            print(f"  Подсказка: PostgreSQL не запущен или недоступен")
-        elif "database" in error_msg and "does not exist" in error_msg:
-            print(f"  Подсказка: База данных 'postgres' не существует")
-        
+        print(f"  Неожиданная ошибка: {type(e).__name__}: {e}")
         return False
-
+        
 def create_database(host, port, user, password, db_name):
     print(f"Создание базы данных {db_name}...")
     
     try:
         from sqlalchemy import create_engine, text
         
-        # Подключаемся к стандартной БД postgres для создания новой
+        # Подключение к стандартной БД postgres для создания новой
         admin_db_url = f"postgresql://{user}:{password}@{host}:{port}/postgres"
         admin_engine = create_engine(admin_db_url)
         
-        # Проверяем существование БД
+        # Проверка существование БД
         with admin_engine.connect() as conn:
             result = conn.execute(
                 text("SELECT 1 FROM pg_database WHERE datname = :db_name"),
@@ -94,7 +69,6 @@ def create_database(host, port, user, password, db_name):
         
         # Создание новой БД
         with admin_engine.connect() as conn:
-            # Закрываем транзакцию перед созданием БД
             conn.execute(text("COMMIT"))
             conn.execute(text(f"CREATE DATABASE {db_name}"))
         
@@ -116,46 +90,78 @@ def create_database(host, port, user, password, db_name):
 def setup_virtualenv():
     print("Создание виртуального окружения...")
     
+    # Проверка существования venv
     if os.path.exists("venv"):
         response = input("  Виртуальное окружение уже существует. Пересоздать? (y/N): ")
         if response.lower() == 'y':
             import shutil
-            shutil.rmtree("venv")
+            try:
+                shutil.rmtree("venv")
+                print("  Старое окружение удалено")
+            except Exception as e:
+                print(f"  Ошибка удаления venv: {e}")
+                return False
         else:
             print("  Использование существующего окружения")
+            
+            # Проверка, что в venv есть python
+            if platform.system() == "Windows":
+                python_path = "venv\\Scripts\\python.exe"
+            else:
+                python_path = "venv/bin/python"
+            
+            if os.path.exists(python_path):
+                print(f"  Python найден в venv: {python_path}")
+                return True
+            else:
+                print(f"  Ошибка: {python_path} не найден в venv")
+                return False
+    
+    # Создание нового venv
+    print("  Создание нового виртуального окружения...")
+    
+    # sys.executable для создания venv
+    cmd = f'"{sys.executable}" -m venv venv'
+    print(f"  Выполнение: {cmd}")
+    
+    if run_command(cmd, timeout=60):
+        # Проверка успешности создания
+        time.sleep(2)  # Даем время для создания файлов
+        
+        if platform.system() == "Windows":
+            python_path = "venv\\Scripts\\python.exe"
+            pip_path = "venv\\Scripts\\pip.exe"
+        else:
+            python_path = "venv/bin/python"
+            pip_path = "venv/bin/pip"
+        
+        if os.path.exists(python_path):
+            print(f"  Виртуальное окружение создано успешно")
+            print(f"  Python путь: {python_path}")
+            
+            # Проверка версии Python
+            version_cmd = f'"{python_path}" --version'
+            run_command(version_cmd, timeout=10)
+            
             return True
-    
-    return run_command(f"{sys.executable} -m venv venv")
-
-def install_dependencies():
-    print("Установка зависимостей...")
-    
-    if platform.system() == "Windows":
-        pip_cmd = "venv\\Scripts\\pip"
+        else:
+            print(f"  Ошибка: {python_path} не найден после создания venv")
+            print("  Возможные причины:")
+            print("    1. Модуль venv не установлен в системе")
+            print("    2. Недостаточно прав для создания файлов")
+            print("    3. Антивирус блокирует создание файлов")
+            return False
     else:
-        pip_cmd = "venv/bin/pip"
+        print("  Не удалось создать виртуальное окружение")
+        
+        # Альтернативные способы создания venv
+        print("  Попробуйте создать venv вручную:")
+        print(f"    {sys.executable} -m venv venv")
+        print("  Или установите модуль venv:")
+        print("    pip install virtualenv")
+        
+        return False
     
-    if os.path.exists("requirements.txt"):
-        return run_command(f"{pip_cmd} install -r requirements.txt")
-    
-    # Базовые зависимости
-    deps = [
-        "fastapi>=0.104.1",
-        "uvicorn[standard]>=0.24.0",
-        "sqlalchemy>=2.0.23",
-        "geoalchemy2>=0.14.2",
-        "psycopg2-binary>=2.9.9",
-        "alembic>=1.12.1",
-        "python-dotenv>=1.0.0",
-        "shapely>=2.0.2"
-    ]
-    
-    if run_command(f"{pip_cmd} install {' '.join(deps)}"):
-        run_command(f"{pip_cmd} freeze > requirements.txt")
-        return True
-    
-    return False
-
 def setup_environment(db_config):
     print("Настройка конфигурации...")
     
@@ -188,55 +194,27 @@ POSTGRES_PASSWORD=1111
 
 def apply_migrations():
     print("Применение миграций базы данных...")
-    
-    if platform.system() == "Windows":
-        venv_python_path = "venv\\Scripts\\python"
-    else:  # Linux, macOS
-        venv_python_path = "venv/bin/python"
-    
-    
-    if os.path.exists(venv_python_path):
-        python_cmd = venv_python_path
-    else:
-        print("  Внимание: venv не найден, использование системного Python")
-        python_cmd = "python"
-    
-    # Обновление alembic.ini с текущими настройками
-    if os.path.exists(".env"):
-        with open(".env", "r", encoding="utf-8") as f:
-            lines = f.readlines()
-            config = {}
-            for line in lines:
-                line = line.strip()
-                if line and '=' in line and not line.startswith('#'):
-                    key, value = line.split('=', 1)
-                    config[key.strip()] = value.strip()
-            
-            required_keys = ['POSTGRES_HOST', 'POSTGRES_PORT', 'POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD']
-            if all(k in config for k in required_keys):
-                # Экранирование пароля для URL
-                safe_password = quote(config['POSTGRES_PASSWORD'], safe='')
-                db_url = f"postgresql://{config['POSTGRES_USER']}:{safe_password}@{config['POSTGRES_HOST']}:{config['POSTGRES_PORT']}/{config['POSTGRES_DB']}"
-                
-                if os.path.exists("alembic.ini"):
-                    with open("alembic.ini", "r", encoding="utf-8") as f_ini:
-                        content = f_ini.read()
-                    
-                    import re
-                    new_content = re.sub(
-                        r'sqlalchemy\.url\s*=.*',
-                        f'sqlalchemy.url = {db_url}',
-                        content,
-                        flags=re.DOTALL
-                    )
-                    
-                    with open("alembic.ini", "w", encoding="utf-8") as f_ini:
-                        f_ini.write(new_content)
-    
-    cmd = f"{python_cmd} -m alembic upgrade head"
-    print(f"  Выполнение: {cmd}")
-    
-    return run_command(cmd)
+
+    venv_python = "venv\\Scripts\\python.exe" if platform.system() == "Windows" else "venv/bin/python"
+
+    if not os.path.exists(venv_python):
+        print("Python venv не найден")
+        return False
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.getcwd()
+
+    if not run_command(
+        f'"{venv_python}" -m alembic upgrade head',
+        env=env,
+        timeout=120
+    ):
+        print("Ошибка применения миграций")
+        return False
+
+    print("Миграции успешно применены")
+    return True
+
 
 def get_database_config():
     print("\n" + "="*50)
@@ -260,76 +238,222 @@ def get_database_config():
     return config
 
 def install_minimal_dependencies():
-    print("Установка SQLAlchemy для проверки подключения...")
+    print("  Установка SQLAlchemy и psycopg2...")
     
-    # Определяем путь к pip
     if platform.system() == "Windows":
         pip_cmd = "venv\\Scripts\\pip"
     else:
         pip_cmd = "venv/bin/pip"
     
-    # Минимальные зависимости для проверки подключения
     minimal_deps = [
         "sqlalchemy>=2.0.23",
-        "psycopg2-binary>=2.9.9"  
+        "psycopg2-binary>=2.9.9"
     ]
     
-    cmd = f"{pip_cmd} install {' '.join(minimal_deps)}"
-    print(f"  Выполняю: {cmd}")
+    cmd = f'"{pip_cmd}" install {" ".join(minimal_deps)}'
+    print(f"  Выполнение: {cmd}")
     
     return run_command(cmd)
 
 def install_all_dependencies():
-    print("Установка всех зависимостей...")
+    print("  Установка FastAPI, GeoAlchemy2 и других зависимостей...")
     
     if platform.system() == "Windows":
         pip_cmd = "venv\\Scripts\\pip"
     else:
         pip_cmd = "venv/bin/pip"
     
-    if os.path.exists("requirements.txt"):
-        return run_command(f"{pip_cmd} install -r requirements.txt")
+    # Убираем --progress-bar, оставляем только --disable-pip-version-check
+    pip_args = "--disable-pip-version-check"
     
-    # Полный список зависимостей
+    if os.path.exists("requirements.txt"):
+        cmd = f'"{pip_cmd}" {pip_args} install -r requirements.txt'
+        print(f"  Выполнение: {cmd}")
+        return run_command(cmd, timeout=300)
+    
     deps = [
         "fastapi>=0.104.1",
         "uvicorn[standard]>=0.24.0",
-        "sqlalchemy>=2.0.23",    
         "geoalchemy2>=0.14.2",
-        "psycopg2-binary>=2.9.9", 
-        "alembic>=1.12.1",
+        "alembic>=1.12.1", 
         "python-dotenv>=1.0.0",
         "shapely>=2.0.2"
     ]
     
-    cmd = f"{pip_cmd} install {' '.join(deps)}"
-    print(f"  Выполняю: {cmd}")
+    cmd = f'"{pip_cmd}" {pip_args} install {" ".join(deps)}'
+    print(f"  Выполнение: {cmd}")
     
-    if run_command(cmd):
-        # Сохраняем зависимости
-        run_command(f"{pip_cmd} freeze > requirements.txt")
+    if run_command(cmd, timeout=300):
+        # Сохранение зависимостей в requirements.txt
+        run_command(f'"{pip_cmd}" freeze > requirements.txt', timeout=30)
         return True
     
     return False
 
+def run_in_venv(python_code):
+    if platform.system() == "Windows":
+        python_path = "venv\\Scripts\\python"
+    else:
+        python_path = "venv/bin/python"
+    
+    # Создание временного файла 
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+        f.write('# -*- coding: utf-8 -*-\n')
+        f.write(python_code)
+        temp_file = f.name
+    
+    try:
+        # Выполнение кода через venv с захватом вывода
+        cmd = f'"{python_path}" "{temp_file}"'
+        result = run_command(cmd, capture_output=True)
+        
+        # Вывод результата выполнения
+        if hasattr(result, 'stdout') and result.stdout:
+            for line in result.stdout.strip().split('\n'):
+                if line:
+                    print(f"    {line}")
+        
+        return result
+    finally:
+        # Удаление временного файла
+        import os
+        os.unlink(temp_file)
+
+def check_postgresql_connection_in_venv(host, port, user, password):
+
+    print("Проверка подключения к PostgreSQL...")
+    
+    from urllib.parse import quote
+    safe_password = quote(password, safe='')
+    
+    python_code = f'''
+# -*- coding: utf-8 -*-
+import sys
+import traceback
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
+
+try:
+    # Формирование URL подключения
+    db_url = "postgresql://{user}:{safe_password}@{host}:{port}/postgres"
+    print(f"Попытка подключения к: {{db_url}}")
+    
+    engine = create_engine(db_url, echo=False, connect_args={{"connect_timeout": 10}})
+    
+    # Проверка подключения
+    with engine.connect() as connection:
+        result = connection.execute(text("SELECT 1"))
+        test_value = result.scalar()
+        
+        if test_value == 1:
+            print("SUCCESS: Подключение успешно")
+            sys.exit(0)
+        else:
+            print(f"ERROR: Неожиданный результат: {{test_value}}")
+            sys.exit(1)
+            
+except Exception as e:
+    print(f"ERROR_DETAILS: {{type(e).__name__}}: {{e}}")
+    print("TRACEBACK:")
+    traceback.print_exc()
+    sys.exit(1)
+'''
+    
+    print("  Запуск проверки подключения...")
+    success = run_in_venv(python_code)
+    
+    if success:
+        print("  Подключение к PostgreSQL успешно")
+        return True
+    else:
+        print("  Не удалось подключиться к PostgreSQL")
+        print(f"  Убедитесь, что PostgreSQL запущен на {host}:{port}")
+        print(f"  Пользователь: {user}, пароль: {'*' * len(password)}")
+        
+        # Дополнительные проверки
+        print("\n  Возможные решения:")
+        print("  1. Проверьте, запущена ли служба PostgreSQL:")
+        print("     - Win+R → services.msc → найдите 'PostgreSQL'")
+        print("     - Или в PowerShell: Get-Service postgresql*")
+        print("  2. Проверьте пароль пользователя postgres")
+        print("  3. Проверьте, разрешены ли подключения в pg_hba.conf")
+        print("  4. Попробуйте подключиться через pgAdmin4 или psql")
+        
+        return False
+    
+def create_database_in_venv(host, port, user, password, db_name):
+    print(f"Создание базы данных {db_name}...")
+    
+    from urllib.parse import quote
+    safe_password = quote(password, safe='')
+    
+    python_code = f'''
+import sys
+from sqlalchemy import create_engine, text
+
+try:
+    # Подключение к стандартной БД postgres
+    admin_db_url = "postgresql://{user}:{safe_password}@{host}:{port}/postgres"
+    admin_engine = create_engine(admin_db_url)
+    
+    # Проверка существования БД
+    with admin_engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT 1 FROM pg_database WHERE datname = :db_name"),
+            {{"db_name": "{db_name}"}}
+        )
+        
+        if result.fetchone():
+            print("DATABASE_EXISTS")
+            sys.exit(0)
+    
+    # Создание новой БД
+    with admin_engine.connect() as conn:
+        conn.execute(text("COMMIT"))
+        conn.execute(text("CREATE DATABASE {db_name}"))
+    
+    print("DATABASE_CREATED")
+    
+    # Подключение к новой БД для создания PostGIS
+    new_db_url = "postgresql://{user}:{safe_password}@{host}:{port}/{db_name}"
+    new_engine = create_engine(new_db_url)
+    
+    with new_engine.connect() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+    
+    print("POSTGIS_ENABLED")
+    sys.exit(0)
+    
+except Exception as e:
+    print(f"ERROR: {{e}}")
+    sys.exit(1)
+'''
+    
+    if run_in_venv(python_code):
+        print(f"  База данных {db_name} создана")
+        print("  Расширение PostGIS включено")
+        return True
+    else:
+        print(f"  Не удалось создать базу данных {db_name}")
+        return False
+
 def main():
     print("Установка GIS Sync System")
     
-    # Создаем виртуальное окружение
+    # Получение конфигурации БД
+    db_config = get_database_config()
+    
     if not setup_virtualenv():
         print("\nНе удалось создать виртуальное окружение.")
         return False
     
-    # Устанавливаем зависимости для проверки БД
-    print("\nУстановка минимальных зависимостей для проверки подключения...")
+    print("\nУстановка SQLAlchemy для проверки подключения...")
     if not install_minimal_dependencies():
-        print("\nНе удалось установить минимальные зависимости.")
+        print("\nНе удалось установить SQLAlchemy.")
         return False
     
-    db_config = get_database_config()
-    
-    # Проверка подключения к PostgreSQL
-    if not check_postgresql_connection(
+    if not check_postgresql_connection_in_venv(
         db_config['host'],
         db_config['port'],
         db_config['user'],
@@ -339,8 +463,8 @@ def main():
         print("Убедитесь, что PostgreSQL запущен и доступен.")
         return False
     
-    # Создаем базу данных
-    if not create_database(
+    # Создание базы данных через отдельный процесс в venv
+    if not create_database_in_venv(
         db_config['host'],
         db_config['port'],
         db_config['user'],
@@ -350,26 +474,28 @@ def main():
         print("\nНе удалось создать базу данных.")
         return False
     
-    # Устанавливаем  зависимости
+    # Установка всех зависимостей
     print("\nУстановка всех зависимостей...")
     if not install_all_dependencies():
         print("\nНе удалось установить зависимости.")
         return False
     
-    #  Настройка окружения
+    # Настройка окружения
     if not setup_environment(db_config):
         print("\nНе удалось настроить конфигурацию.")
         return False
     
-    #  Применение миграций
+    # Применение миграций
     if not apply_migrations():
         print("\nНе удалось применить миграции.")
         return False
     
+    print("\n" + "="*50)
     print("Установка завершена успешно!")
+    print("="*50)
     
     if platform.system() == "Windows":
-        print("\nДля запуска сервера выполните: run.bat")
+        print("\nДля запуска сервера дважды кликните на run.bat")
     else:
         print("\nДля запуска сервера выполните: ./run.sh")
     
