@@ -1,5 +1,26 @@
 # Руководство по установке и использованию GIS Sync System
 
+## Быстрая установка (рекомендуется)
+
+### Для Windows:
+1. **Скачайте проект** на компьютер
+2. **Дважды кликните** на файл `install.bat`
+3. **Следуйте инструкциям** на экране
+4. После установки **дважды кликните** на `run.bat` для запуска сервера
+
+### Для Linux/macOS:
+```bash
+# 1. Скачайте проект и перейдите в его папку
+# 2. Сделайте скрипты исполняемыми
+chmod +x install.sh run.sh
+
+# 3. Запустите установку
+./install.sh
+
+# 4. Запустите сервер
+./run.sh
+```
+
 ## 1. Установка и настройка базы данных PostgreSQL
 
 ### Предварительные требования
@@ -7,19 +28,30 @@
 - Клиентские утилиты PostgreSQL (`psql`) должны быть доступны в PATH
 - Права пользователя на создание баз данных
 
-### Автоматическая установка (рекомендуемый способ)
-Запустите установщик, который автоматически создаст базу данных и настроит все компоненты:
+**Примечание для Linux/macOS:**
 ```bash
-python setup.py
+# Установка клиента PostgreSQL на Debian/Ubuntu
+sudo apt-get install postgresql-client
+
+# Установка на macOS (используя Homebrew)
+brew install postgresql
 ```
+
+### Автоматическая установка через скрипты (рекомендуемый способ)
+
+**Windows** (дважды кликнуть): `install.bat`
+**Linux/macOS:** `./install.sh`
+
 Установщик выполнит следующие действия:
-- Запросит параметры подключения к PostgreSQL (хост, порт, пользователь, пароль)
-- Создаст базу данных с указанным именем (по умолчанию `gis_test`)
-- Включит расширение PostGIS в созданной базе данных
-- Создаст виртуальное окружение Python и установит все зависимости
-- Применит миграции Alembic для создания схемы таблиц
+- Проверка наличия Python и необходимых компонентов
+- Запрос параметров подключения к PostgreSQL (хост, порт, пользователь, пароль)
+- Создание базы данных с указанным именем (по умолчанию `gis_test`)
+- Включение расширения PostGIS в созданной базе данных
+- Создание виртуального окружения Python и установка всех зависимостей
+- Применение миграций Alembic для создания схемы таблиц
 
 ### Ручная установка (если автоматическая не сработала)
+
 Если установщик не смог создать базу данных автоматически, выполните следующие шаги вручную:
 
 #### Через командную строку:
@@ -77,6 +109,15 @@ psql -U postgres -d gis_test -c "SELECT PostGIS_Version();"
 C:\Users\ВАШ_ПОЛЬЗОВАТЕЛЬ\AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins\
 ```
 
+**Linux:**
+```
+~/.local/share/QGIS/QGIS3/profiles/default/python/plugins/
+```
+
+**macOS:**
+```
+~/Library/Application Support/QGIS/QGIS3/profiles/default/python/plugins/
+```
 
 После копирования:
 1. Перезапустите QGIS
@@ -102,53 +143,67 @@ Get-Service postgresql*
 Start-Service postgresql-x64-15  # укажите вашу версию
 ```
 
-### Настройка подключения к серверу
-Если PostgreSQL запущен на другом хосте или порту, отредактируйте файл `.env`:
+**Linux (systemd):**
 ```bash
-# Откройте .env файл в текстовом редакторе
-# Измените параметры подключения:
-POSTGRES_HOST=ваш_хост
-POSTGRES_PORT=ваш_порт
-POSTGRES_USER=ваш_пользователь
-POSTGRES_PASSWORD=ваш_пароль
-POSTGRES_DB=имя_базы_данных
+# Проверка службы PostgreSQL
+sudo systemctl status postgresql
+
+# Запуск службы (если не запущена)
+sudo systemctl start postgresql
 ```
 
-### Запуск сервера FastAPI
-После настройки базы данных и установки зависимостей запустите сервер:
+**Linux (service):**
+```bash
+# Альтернативный способ для старых систем
+sudo service postgresql status
+sudo service postgresql start
+```
 
-**Windows:**
+**macOS (Homebrew):**
 ```bash
-run.bat
+# Проверка службы PostgreSQL
+brew services list | grep postgresql
+
+# Запуск службы (если не запущена)
+brew services start postgresql
 ```
-Или вручную:
-```bash
-venv\Scripts\activate
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
+
 
 ### Проверка работоспособности сервера
 После запуска сервера откройте в браузере:
-- http://localhost:8000 - стандартная страница для перехода в административный интерфейс(админку)
+- http://localhost:8000 - стандартная страница для перехода в административный интерфейс (админку)
 - http://localhost:8000/admin - административный интерфейс
 - http://localhost:8000/features - список геообъектов (должен вернуть пустой массив или существующие объекты)
+- http://localhost:8000/docs - интерактивная документация API (Swagger UI)
 
 !!!ПОСЛЕ СОХРАНЕНИЯ ИЗМЕНЕНИЙ СЛОЯ В QGIS ДЛЯ ОТОБРАЖЕНИЯ ИЗМЕНЕНИЯ В АДМИНКЕ НЕОБХОДИМО ПЕРЕЗАГРУЗИТЬ СТРАНИЦУ!!!
+
 ## 4. Использование вспомогательных скриптов
 
 ### check_db.py
 Скрипт для проверки состояния базы данных и создания таблиц при необходимости.
 
 **Основные команды:**
-```bash
-# Проверить состояние базы данных
-python check_db.py
 
+**Windows:**
+```bash
+python check_db.py
+```
+
+**Linux/macOS:**
+```bash
+python3 check_db.py
+```
+
+**Дополнительные опции:**
+```bash
 # Проверить состояние с подробным выводом
-python check_db.py --check
+python check_db.py --check  # Windows
+python3 check_db.py --check  # Linux/macOS
 
 # Создать таблицы вручную (если миграции не сработали)
 python check_db.py --create-tables
+python3 check_db.py --create-tables
 
 # Проверить конкретные аспекты БД
 python check_db.py --check-tables
@@ -166,8 +221,15 @@ python check_db.py --check-postgis
 Скрипт для диагностики проблем с подключением и конфигурацией.
 
 **Использование:**
+
+**Windows:**
 ```bash
 python debug_connection.py
+```
+
+**Linux/macOS:**
+```bash
+python3 debug_connection.py
 ```
 
 **Что проверяет скрипт:**
@@ -178,14 +240,14 @@ python debug_connection.py
 
 **Пример вывода:**
 ```
-=== ПРОВЕРКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ ===
+ПРОВЕРКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
 POSTGRES_HOST: 'localhost'
 POSTGRES_PORT: '5432'
 POSTGRES_DB: 'gis_test'
 POSTGRES_USER: 'postgres'
 POSTGRES_PASSWORD: '***'
 
-=== ПРОВЕРКА config.py ===
+ПРОВЕРКА config.py
 DATABASE_URL: postgresql+psycopg2://postgres:***@localhost:5432/gis_test
 Длина URL: 57
 ```
@@ -194,8 +256,15 @@ DATABASE_URL: postgresql+psycopg2://postgres:***@localhost:5432/gis_test
 Скрипт для тестирования подключения Alembic к базе данных и проверки миграций.
 
 **Использование:**
+
+**Windows:**
 ```bash
 python test_alembic_connection.py
+```
+
+**Linux/macOS:**
+```bash
+python3 test_alembic_connection.py
 ```
 
 **Что проверяет скрипт:**
@@ -222,30 +291,70 @@ python test_alembic_connection.py
 
 1. Сначала проверьте базовое подключение:
    ```bash
-   python debug_connection.py
+   python debug_connection.py  # Windows
+   python3 debug_connection.py  # Linux/macOS
    ```
 
 2. Если переменные окружения в порядке, проверьте Alembic:
    ```bash
    python test_alembic_connection.py
+   python3 test_alembic_connection.py
    ```
 
 3. Если Alembic не видит таблиц, создайте их вручную:
    ```bash
    python check_db.py --create-tables
+   python3 check_db.py --create-tables
    ```
 
 4. Проверьте общее состояние системы:
    ```bash
    python check_db.py --check
+   python3 check_db.py --check
+   ```
+
+## Устранение неполадок
+
+### Если установка не запускается:
+
+**Windows:**
+1. Убедитесь, что Python установлен и добавлен в PATH
+   - Откройте командную строку и введите `python --version`
+   - Если команда не работает, переустановите Python с галочкой "Add Python to PATH"
+2. Проверьте, не блокирует ли антивирус выполнение скриптов
+
+**Linux/macOS:**
+1. Убедитесь, что файлы имеют права на выполнение
+   ```bash
+   chmod +x install.sh run.sh
+   ```
+2. Если нет Python3:
+   ```bash
+   sudo apt-get install python3 python3-pip python3-venv
    ```
 
 ### Автоматическое восстановление при проблемах
 
 Если система не запускается из-за проблем с БД, выполните полный сброс:
 
+**Windows:**
 ```bash
-# 1. Остановите сервер (Ctrl+C)
+# 1. Остановите сервер (Ctrl+C в окне run.bat)
+# 2. Удалите виртуальное окружение и конфигурацию
+rmdir /s venv
+del .env
+
+# 3. Пересоздайте базу данных
+psql -U postgres -c "DROP DATABASE IF EXISTS gis_test;"
+psql -U postgres -c "CREATE DATABASE gis_test;"
+psql -U postgres -d gis_test -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+
+# 4. Запустите установку заново (дважды кликните install.bat)
+```
+
+**Linux/macOS:**
+```bash
+# 1. Остановите сервер (Ctrl+C в терминале)
 # 2. Удалите виртуальное окружение и конфигурацию
 rm -rf venv .env
 
@@ -254,11 +363,9 @@ psql -U postgres -c "DROP DATABASE IF EXISTS gis_test;"
 psql -U postgres -c "CREATE DATABASE gis_test;"
 psql -U postgres -d gis_test -c "CREATE EXTENSION IF NOT EXISTS postgis;"
 
-# 4. Запустите установщик заново
-python setup.py
-
-# 5. Запустите сервер
-./run.sh
+# 4. Запустите установку заново
+chmod +x install.sh
+./install.sh
 ```
 
 ### Логирование ошибок
@@ -270,6 +377,5 @@ SQLALCHEMY_ECHO=True
 
 Это позволит видеть все SQL-запросы, которые выполняются при подключении к базе данных.
 
----
 
-**Примечание:** Все скрипты предполагают, что вы находитесь в корневой директории проекта и виртуальное окружение активировано (если требуется). Для автоматической установки скрипты вызываются из `setup.py` и не требуют ручного запуска.
+**Примечание:** Все скрипты предполагают, что вы находитесь в корневой директории проекта. Для автоматической установки скрипты вызываются из `setup.py` и не требуют ручного запуска.
