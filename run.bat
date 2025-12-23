@@ -3,41 +3,41 @@ chcp 65001 >nul
 echo   GIS Sync System - Backend Launcher
 
 
-REM РџСЂРѕРІРµСЂРєР° РІРёСЂС‚СѓР°Р»СЊРЅРѕРіРѕ РѕРєСЂСѓР¶РµРЅРёСЏ
+REM Проверка виртуального окружения
 if not exist "venv\" (
-    echo [ERROR] Р’РёСЂС‚СѓР°Р»СЊРЅРѕРµ РѕРєСЂСѓР¶РµРЅРёРµ РЅРµ РЅР°Р№РґРµРЅРѕ.
+    echo [ERROR] Виртуальное окружение не найдено.
     echo.
-    echo Р—Р°РїСѓСЃС‚РёС‚Рµ СЃРЅР°С‡Р°Р»Р° СѓСЃС‚Р°РЅРѕРІРєСѓ:
+    echo Запустите сначала установку:
     echo   python scripts\setup_database.py
     echo.
     pause
     exit /b 1
 )
 
-REM РџСЂРѕРІРµСЂРєР° Р·Р°РІРёСЃРёРјРѕСЃС‚РµР№
+REM Проверка зависимостей
 if not exist "venv\Scripts\uvicorn.exe" (
-    echo [ERROR] uvicorn РЅРµ РЅР°Р№РґРµРЅ РІ РІРёСЂС‚СѓР°Р»СЊРЅРѕРј РѕРєСЂСѓР¶РµРЅРёРё.
+    echo [ERROR] uvicorn не найден в виртуальном окружении.
     echo.
-    echo РЈСЃС‚Р°РЅРѕРІРёС‚Рµ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё:
+    echo Установите зависимости:
     echo   venv\Scripts\pip install uvicorn[standard]
     echo.
     pause
     exit /b 1
 )
 
-echo [INFO] Р—Р°РїСѓСЃРє FastAPI СЃРµСЂРІРµСЂР°...
-echo [INFO] РЎРµСЂРІРµСЂ Р±СѓРґРµС‚ РґРѕСЃС‚СѓРїРµРЅ РїРѕ: http://localhost:8000
-echo [INFO] Р”РѕРєСѓРјРµРЅС‚Р°С†РёСЏ: http://localhost:8000/docs
-echo [INFO] РђРґРјРёРЅРєР°: http://localhost:8000/admin
+echo [INFO] Запуск FastAPI сервера...
+echo [INFO] Сервер будет доступен по: http://localhost:8000
+echo [INFO] Документация: http://localhost:8000/docs
+echo [INFO] Админка: http://localhost:8000/admin
 echo.
-echo [INFO] Р”Р»СЏ РѕСЃС‚Р°РЅРѕРІРєРё СЃРµСЂРІРµСЂР° РЅР°Р¶РјРёС‚Рµ Ctrl+C
+echo [INFO] Для остановки сервера нажмите Ctrl+C
 echo.
 
-REM Р—Р°РїСѓСЃРє СЃРµСЂРІРµСЂР°
+REM Запуск сервера
 venv\Scripts\uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 if %errorlevel% neq 0 (
     echo.
-    echo [ERROR] РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РїСѓСЃС‚РёС‚СЊ СЃРµСЂРІРµСЂ.
+    echo [ERROR] Не удалось запустить сервер.
     pause
 )

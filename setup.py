@@ -31,50 +31,70 @@ def run_command(cmd, env=None, capture_output=True):
 def check_postgresql_connection(host, port, user, password):
     print("Проверка подключения к PostgreSQL...")
     
-    # Экранирование пароля
-    safe_password = quote(password, safe='')
-    
-    test_commands = [
-        f'psql "postgresql://{user}:{safe_password}@{host}:{port}/postgres" -c "SELECT 1"',
-        f'PGPASSWORD={password} psql -h {host} -p {port} -U {user} -d postgres -c "SELECT 1"',
-    ]
-    
-    for cmd in test_commands:
-        if run_command(cmd, capture_output=False):
-            print(f"  Подключение к PostgreSQL успешно")
-            return True
-    
-    print(f"  Не удалось подключиться к PostgreSQL")
-    print(f"  Убедитесь, что PostgreSQL запущен на {host}:{port}")
-    print(f"  Пользователь: {user}, пароль: {'*' * len(password)}")
-    return False
+    try:
+        # Создаем движок SQLAlchemy для подключения к postgres
+        from sqlalchemy import create_engine, text
+        
+        # Формируем URL подключения к стандартной БД postgres
+        db_url = f"postgresql://{user}:{password}@{host}:{port}/postgres"
+        engine = create_engine(db_url, echo=False)
+        
+        # Пробуем выполнить простой запрос
+        with engine.connect() as connection:
+            result = connection.execute(text("SELECT 1"))
+            result.scalar()
+        
+        print("  Подключение к PostgreSQL успешно")
+        return True
+        
+    except Exception as e:
+        print(f"  Не удалось подключиться к PostgreSQL: {e}")
+        print(f"  Убедитесь, что PostgreSQL запущен на {host}:{port}")
+        print(f"  Пользователь: {user}, пароль: {'*' * len(password)}")
+        return False
 
 def create_database(host, port, user, password, db_name):
     print(f"Создание базы данных {db_name}...")
     
-    safe_password = quote(password, safe='')
-    
-    # Проверка существования БД 
-    check_db_cmd = f'psql "postgresql://{user}:{safe_password}@{host}:{port}/postgres" -c "SELECT 1 FROM pg_database WHERE datname = \'{db_name}\'" -t'
-    
-    if run_command(check_db_cmd, capture_output=True):
-        print(f"  База данных {db_name} уже существует")
-        return True
-    
-    # Создание БД 
-    create_cmd = f'psql "postgresql://{user}:{safe_password}@{host}:{port}/postgres" -c "CREATE DATABASE {db_name}"'
-    
-    if run_command(create_cmd):
+    try:
+        from sqlalchemy import create_engine, text
+        
+        # Сначала подключаемся к стандартной БД postgres
+        admin_db_url = f"postgresql://{user}:{password}@{host}:{port}/postgres"
+        admin_engine = create_engine(admin_db_url)
+        
+        # Проверяем существование БД
+        with admin_engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = :db_name"),
+                {"db_name": db_name}
+            )
+            
+            if result.fetchone():
+                print(f"  База данных {db_name} уже существует")
+                return True
+        
+        # Создаем новую БД
+        with admin_engine.connect() as conn:
+            # Отключаем автокоммит для SQLAlchemy 2.0
+            conn.execute(text("COMMIT"))
+            conn.execute(text(f"CREATE DATABASE {db_name}"))
+        
         print(f"  База данных {db_name} создана")
         
-        # Включение PostGIS
-        enable_postgis = f'psql "postgresql://{user}:{safe_password}@{host}:{port}/{db_name}" -c "CREATE EXTENSION IF NOT EXISTS postgis"'
-        if run_command(enable_postgis):
-            print("  Расширение PostGIS включено")
-            return True
-    
-    print(f"  Не удалось создать базу данных {db_name}")
-    return False
+        # Подключаемся к новой БД и создаем расширение PostGIS
+        new_db_url = f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
+        new_engine = create_engine(new_db_url)
+        
+        with new_engine.connect() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        
+        print("  Расширение PostGIS включено")
+        return True
+        
+    except Exception as e:
+        print(f"  Не удалось создать базу данных {db_name}: {e}")
+        return False
 
 def setup_virtualenv():
     print("Создание виртуального окружения...")

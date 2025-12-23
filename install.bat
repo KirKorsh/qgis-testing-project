@@ -1,41 +1,53 @@
 @echo off
-chcp 65001 >nul
+chcp 1251 >nul
+echo   GIS Sync System - Установка
 
-echo   GIS Sync System - РЈСЃС‚Р°РЅРѕРІРєР°
-
-echo [INFO] Р—Р°РїСѓСЃРє Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРѕР№ СѓСЃС‚Р°РЅРѕРІРєРё...
-echo [INFO] Р”Р»СЏ РїСЂРµСЂС‹РІР°РЅРёСЏ СѓСЃС‚Р°РЅРѕРІРєРё Р·Р°РєСЂРѕР№С‚Рµ СЌС‚Рѕ РѕРєРЅРѕ
-echo [INFO] РР»Рё РЅР°Р¶РјРёС‚Рµ Ctrl+C
+echo [INFO] Запуск автоматической установки...
+echo [INFO] Для прерывания установки закройте это окно
+echo [INFO] Или нажмите Ctrl+C
 echo.
 
-REM РџСЂРѕРІРµСЂРєР° РЅР°Р»РёС‡РёСЏ Python
+REM Проверка наличия Python
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Python РЅРµ РЅР°Р№РґРµРЅ РІ СЃРёСЃС‚РµРјРµ.
+    echo [ERROR] Python не найден в системе.
     echo.
-    echo РЈСЃС‚Р°РЅРѕРІРёС‚Рµ Python СЃ РѕС„РёС†РёР°Р»СЊРЅРѕРіРѕ СЃР°Р№С‚Р°:
+    echo Установите Python с официального сайта:
     echo https://www.python.org/downloads/
     echo.
-    echo РќРµ Р·Р°Р±СѓРґСЊС‚Рµ РѕС‚РјРµС‚РёС‚СЊ РіР°Р»РѕС‡РєСѓ "Add Python to PATH"
+    echo Не забудьте отметить галочку "Add Python to PATH"
     echo.
     pause
     exit /b 1
 )
 
-REM Р—Р°РїСѓСЃРє СѓСЃС‚Р°РЅРѕРІС‰РёРєР°
+REM Проверка версии Python
+python -c "import sys; exit(0) if sys.version_info >= (3, 8) else exit(1)" 2>nul
+if errorlevel 1 (
+    echo [ERROR] Требуется Python 3.8 или выше
+    echo.
+    echo Установите актуальную версию Python
+    echo.
+    pause
+    exit /b 1
+)
+
+REM Запуск установщика
+echo [INFO] Запуск установщика setup.py...
 python setup.py
 
 if errorlevel 1 (
     echo.
-    echo [ERROR] РЈСЃС‚Р°РЅРѕРІРєР° Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃ РѕС€РёР±РєРѕР№.
-    echo РџСЂРѕРІРµСЂСЊС‚Рµ СЃРѕРѕР±С‰РµРЅРёСЏ РІС‹С€Рµ РґР»СЏ РґРёР°РіРЅРѕСЃС‚РёРєРё.
+    echo [ERROR] Установка завершилась с ошибкой.
+    echo Проверьте сообщения выше для диагностики.
     pause
     exit /b 1
 )
 
 echo.
-echo   РЈСЃС‚Р°РЅРѕРІРєР° СѓСЃРїРµС€РЅРѕ Р·Р°РІРµСЂС€РµРЅР°!
+echo   Установка успешно завершена!
 echo.
-echo Р”Р»СЏ Р·Р°РїСѓСЃРєР° СЃРµСЂРІРµСЂР° РґРІР°Р¶РґС‹ РєР»РёРєРЅРёС‚Рµ РЅР° С„Р°Р№Р» run.bat
+echo Для запуска сервера дважды кликните на файл run.bat
+echo Или откройте его в текстовом редакторе для просмотра
 echo.
 pause
