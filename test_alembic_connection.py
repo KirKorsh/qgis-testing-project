@@ -30,7 +30,7 @@ except Exception as e:
     print(f"   Подсказка: Проверьте, запущен ли PostgreSQL на localhost:5432")
     print(f"   Проверьте пароль в URL: {db_url[:50]}...")
 
-# 3. Проверка файлов миграции
+# Проверка файлов миграции
 print(f"\n3. Проверяем файлы миграций...")
 import glob
 migrations = glob.glob("alembic/versions/*.py")

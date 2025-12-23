@@ -1,5 +1,4 @@
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
 from logging.config import fileConfig
@@ -10,10 +9,9 @@ import sys
 # Добавление пути  в sys.path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-# Импорти объектов из приложения
 from app.database import Base
-from app.models.feature import Feature  # Импортируем ВСЕ модели
-from app.core.config import DATABASE_URL  # Будет на шаге 2
+from app.models.feature import Feature
+from app.core.config import DATABASE_URL
 
 config = context.config
 fileConfig(config.config_file_name)

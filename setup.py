@@ -1,9 +1,9 @@
-
 import os
 import sys
 import subprocess
 import platform
 import time
+from urllib.parse import quote
 
 def run_command(cmd, env=None, capture_output=True):
     try:
@@ -12,72 +12,80 @@ def run_command(cmd, env=None, capture_output=True):
             shell=True,
             capture_output=capture_output,
             text=True,
+            encoding='utf-8',
             env=env or os.environ,
             timeout=30
         )
+        
         if result.returncode != 0 and capture_output:
-            print(f"Ошибка: {result.stderr[:200]}")
+            print(f"  Ошибка: {result.stderr[:200]}")
         return result.returncode == 0
+        
     except subprocess.TimeoutExpired:
-        print(f"Таймаут выполнения: {cmd}")
+        print(f"  Таймаут выполнения: {cmd}")
+        return False
+    except FileNotFoundError:
+        print(f"  Команда не найдена: {cmd.split()[0]}")
         return False
 
 def check_postgresql_connection(host, port, user, password):
     print("Проверка подключения к PostgreSQL...")
     
-    # Разные способы подключения
+    # Экранирование пароля
+    safe_password = quote(password, safe='')
+    
     test_commands = [
-        # Через psql
-        f'psql "postgresql://{user}:{password}@{host}:{port}/postgres" -c "SELECT 1"',
-        # Через PGPASSWORD
+        f'psql "postgresql://{user}:{safe_password}@{host}:{port}/postgres" -c "SELECT 1"',
         f'PGPASSWORD={password} psql -h {host} -p {port} -U {user} -d postgres -c "SELECT 1"',
     ]
     
     for cmd in test_commands:
         if run_command(cmd, capture_output=False):
-            print(f"Подключение к PostgreSQL успешно")
+            print(f"  Подключение к PostgreSQL успешно")
             return True
     
-    print(f"Не удалось подключиться к PostgreSQL")
-    print(f"Убедитесь, что PostgreSQL запущен на {host}:{port}")
-    print(f"Пользователь: {user}, пароль: {'*' * len(password)}")
+    print(f"  Не удалось подключиться к PostgreSQL")
+    print(f"  Убедитесь, что PostgreSQL запущен на {host}:{port}")
+    print(f"  Пользователь: {user}, пароль: {'*' * len(password)}")
     return False
 
 def create_database(host, port, user, password, db_name):
     print(f"Создание базы данных {db_name}...")
     
-    # Проверка существования БД
-    check_db_cmd = f'psql "postgresql://{user}:{password}@{host}:{port}/postgres" -c "SELECT 1 FROM pg_database WHERE datname = \'{db_name}\'" -t'
+    safe_password = quote(password, safe='')
+    
+    # Проверка существования БД 
+    check_db_cmd = f'psql "postgresql://{user}:{safe_password}@{host}:{port}/postgres" -c "SELECT 1 FROM pg_database WHERE datname = \'{db_name}\'" -t'
     
     if run_command(check_db_cmd, capture_output=True):
-        print(f"База данных {db_name} уже существует")
+        print(f"  База данных {db_name} уже существует")
         return True
     
-    # Создание БД
-    create_cmd = f'psql "postgresql://{user}:{password}@{host}:{port}/postgres" -c "CREATE DATABASE {db_name}"'
+    # Создание БД 
+    create_cmd = f'psql "postgresql://{user}:{safe_password}@{host}:{port}/postgres" -c "CREATE DATABASE {db_name}"'
     
     if run_command(create_cmd):
-        print(f"База данных {db_name} создана")
+        print(f"  База данных {db_name} создана")
         
         # Включение PostGIS
-        enable_postgis = f'psql "postgresql://{user}:{password}@{host}:{port}/{db_name}" -c "CREATE EXTENSION IF NOT EXISTS postgis"'
+        enable_postgis = f'psql "postgresql://{user}:{safe_password}@{host}:{port}/{db_name}" -c "CREATE EXTENSION IF NOT EXISTS postgis"'
         if run_command(enable_postgis):
-            print("Расширение PostGIS включено")
+            print("  Расширение PostGIS включено")
             return True
     
-    print(f"Не удалось создать базу данных {db_name}")
+    print(f"  Не удалось создать базу данных {db_name}")
     return False
 
 def setup_virtualenv():
     print("Создание виртуального окружения...")
     
     if os.path.exists("venv"):
-        response = input("Виртуальное окружение уже существует. Пересоздать? (y/N): ")
+        response = input("  Виртуальное окружение уже существует. Пересоздать? (y/N): ")
         if response.lower() == 'y':
             import shutil
             shutil.rmtree("venv")
         else:
-            print("Используется существующее окружение")
+            print("  Использование существующего окружения")
             return True
     
     return run_command(f"{sys.executable} -m venv venv")
@@ -85,7 +93,10 @@ def setup_virtualenv():
 def install_dependencies():
     print("Установка зависимостей...")
     
-    pip_cmd = "venv\\Scripts\\pip" if platform.system() == "Windows" else "venv/bin/pip"
+    if platform.system() == "Windows":
+        pip_cmd = "venv\\Scripts\\pip"
+    else:
+        pip_cmd = "venv/bin/pip"
     
     if os.path.exists("requirements.txt"):
         return run_command(f"{pip_cmd} install -r requirements.txt")
@@ -135,44 +146,61 @@ POSTGRES_PASSWORD=1111
         
         return True
     except Exception as e:
-        print(f"Ошибка создания .env: {e}")
+        print(f"  Ошибка создания .env: {e}")
         return False
 
 def apply_migrations():
     print("Применение миграций базы данных...")
     
-    python_cmd = "venv\\Scripts\\python" if platform.system() == "Windows" else "venv/bin/python"
+    # Формирование пути к Python
+    if platform.system() == "Windows":
+        venv_python_path = "venv\\Scripts\\python"
+    else:  # Linux, macOS
+        venv_python_path = "venv/bin/python"
+    
+    
+    if os.path.exists(venv_python_path):
+        python_cmd = venv_python_path
+    else:
+        print("  Внимание: venv не найден, использование системного Python")
+        python_cmd = "python"
     
     # Обновление alembic.ini с текущими настройками
     if os.path.exists(".env"):
-        with open(".env", "r") as f:
+        with open(".env", "r", encoding="utf-8") as f:
             lines = f.readlines()
             config = {}
             for line in lines:
-                if '=' in line:
-                    key, value = line.strip().split('=', 1)
-                    config[key] = value
+                line = line.strip()
+                if line and '=' in line and not line.startswith('#'):
+                    key, value = line.split('=', 1)
+                    config[key.strip()] = value.strip()
             
-            if all(k in config for k in ['POSTGRES_HOST', 'POSTGRES_PORT', 'POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD']):
-                db_url = f"postgresql://{config['POSTGRES_USER']}:{config['POSTGRES_PASSWORD']}@{config['POSTGRES_HOST']}:{config['POSTGRES_PORT']}/{config['POSTGRES_DB']}"
+            required_keys = ['POSTGRES_HOST', 'POSTGRES_PORT', 'POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD']
+            if all(k in config for k in required_keys):
+                # Экранирование пароля для URL
+                safe_password = quote(config['POSTGRES_PASSWORD'], safe='')
+                db_url = f"postgresql://{config['POSTGRES_USER']}:{safe_password}@{config['POSTGRES_HOST']}:{config['POSTGRES_PORT']}/{config['POSTGRES_DB']}"
                 
-                # Обновление alembic.ini
                 if os.path.exists("alembic.ini"):
-                    with open("alembic.ini", "r") as f_ini:
+                    with open("alembic.ini", "r", encoding="utf-8") as f_ini:
                         content = f_ini.read()
                     
-                    # Обновление sqlalchemy.url
                     import re
                     new_content = re.sub(
                         r'sqlalchemy\.url\s*=.*',
                         f'sqlalchemy.url = {db_url}',
-                        content
+                        content,
+                        flags=re.DOTALL
                     )
                     
-                    with open("alembic.ini", "w") as f_ini:
+                    with open("alembic.ini", "w", encoding="utf-8") as f_ini:
                         f_ini.write(new_content)
     
-    return run_command(f"{python_cmd} -m alembic upgrade head")
+    cmd = f"{python_cmd} -m alembic upgrade head"
+    print(f"  Выполнение: {cmd}")
+    
+    return run_command(cmd)
 
 def get_database_config():
     print("\n" + "="*50)
@@ -200,10 +228,8 @@ def main():
     print("Установка GIS Sync System")
     print("="*50)
     
-    # Получение конфигурации БД
     db_config = get_database_config()
     
-    # Проверка подключения к PostgreSQL
     if not check_postgresql_connection(
         db_config['host'],
         db_config['port'],
@@ -214,7 +240,6 @@ def main():
         print("Убедитесь, что PostgreSQL запущен и доступен.")
         return False
     
-    # Создание базы данных
     if not create_database(
         db_config['host'],
         db_config['port'],
@@ -230,7 +255,7 @@ def main():
         print("\nНе удалось создать виртуальное окружение.")
         return False
     
-    # Устанавливка зависимости
+    # Установка зависимостей
     if not install_dependencies():
         print("\nНе удалось установить зависимости.")
         return False
