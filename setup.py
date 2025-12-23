@@ -46,17 +46,18 @@ def run_command(cmd, env=None, capture_output=True, timeout=60):
         print(f"  Неожиданная ошибка: {type(e).__name__}: {e}")
         return False
         
+
 def create_database(host, port, user, password, db_name):
     print(f"Создание базы данных {db_name}...")
     
     try:
         from sqlalchemy import create_engine, text
         
-        # Подключение к стандартной БД postgres для создания новой
+        # Подключаемся к стандартной БД postgres для создания новой
         admin_db_url = f"postgresql://{user}:{password}@{host}:{port}/postgres"
         admin_engine = create_engine(admin_db_url)
         
-        # Проверка существование БД
+        # Проверяем существование БД
         with admin_engine.connect() as conn:
             result = conn.execute(
                 text("SELECT 1 FROM pg_database WHERE datname = :db_name"),
@@ -69,6 +70,7 @@ def create_database(host, port, user, password, db_name):
         
         # Создание новой БД
         with admin_engine.connect() as conn:
+            # Закрываем транзакцию перед созданием БД
             conn.execute(text("COMMIT"))
             conn.execute(text(f"CREATE DATABASE {db_name}"))
         
@@ -87,6 +89,7 @@ def create_database(host, port, user, password, db_name):
     except Exception as e:
         print(f"  Не удалось создать базу данных {db_name}: {e}")
         return False
+
 def setup_virtualenv():
     print("Создание виртуального окружения...")
     
@@ -120,7 +123,7 @@ def setup_virtualenv():
     # Создание нового venv
     print("  Создание нового виртуального окружения...")
     
-    # sys.executable для создания venv
+    # Используем sys.executable для создания venv
     cmd = f'"{sys.executable}" -m venv venv'
     print(f"  Выполнение: {cmd}")
     
@@ -162,6 +165,36 @@ def setup_virtualenv():
         
         return False
     
+def install_dependencies():
+    print("Установка зависимостей...")
+    
+    if platform.system() == "Windows":
+        pip_cmd = "venv\\Scripts\\pip"
+    else:
+        pip_cmd = "venv/bin/pip"
+    
+    if os.path.exists("requirements.txt"):
+        return run_command(f"{pip_cmd} install -r requirements.txt")
+    
+    # Базовые зависимости
+    deps = [
+        "fastapi>=0.104.1",
+        "uvicorn[standard]>=0.24.0",
+        "sqlalchemy>=2.0.23",
+        "geoalchemy2>=0.14.2",
+        "psycopg2-binary>=2.9.9",
+        "alembic>=1.12.1",
+        "python-dotenv>=1.0.0",
+        "shapely>=2.0.2",
+        "jinja2>=3.1.2"
+    ]
+    
+    if run_command(f"{pip_cmd} install {' '.join(deps)}"):
+        run_command(f"{pip_cmd} freeze > requirements.txt")
+        return True
+    
+    return False
+
 def setup_environment(db_config):
     print("Настройка конфигурации...")
     
@@ -194,28 +227,187 @@ POSTGRES_PASSWORD=1111
 
 def apply_migrations():
     print("Применение миграций базы данных...")
-
-    venv_python = "venv\\Scripts\\python.exe" if platform.system() == "Windows" else "venv/bin/python"
-
-    if not os.path.exists(venv_python):
-        print("Python venv не найден")
+    
+    # Определение пути к Python
+    if platform.system() == "Windows":
+        venv_python_path = "venv\\Scripts\\python.exe"
+    else:
+        venv_python_path = "venv/bin/python"
+    
+    if not os.path.exists(venv_python_path):
+        print(f"  Ошибка: {venv_python_path} не найден!")
         return False
-
-    env = os.environ.copy()
-    env["PYTHONPATH"] = os.getcwd()
-
-    if not run_command(
-        f'"{venv_python}" -m alembic upgrade head',
-        env=env,
-        timeout=120
-    ):
-        print("Ошибка применения миграций")
+    
+    print(f"  Использование Python из venv: {venv_python_path}")
+    
+    # 1. ЧТЕНИЕ ДАННЫХ ИЗ .env
+    if not os.path.exists(".env"):
+        print("  Ошибка: файл .env не найден")
         return False
+    
+    with open(".env", "r", encoding="utf-8") as f:
+        lines = f.readlines()
+        config = {}
+        for line in lines:
+            line = line.strip()
+            if line and '=' in line and not line.startswith('#'):
+                key, value = line.split('=', 1)
+                config[key.strip()] = value.strip()
+    
+    required_keys = ['POSTGRES_HOST', 'POSTGRES_PORT', 'POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD']
+    missing_keys = [k for k in required_keys if k not in config]
+    
+    if missing_keys:
+        print(f"  Ошибка: отсутствуют параметры в .env: {missing_keys}")
+        return False
+    
+    db_name = config['POSTGRES_DB']
+    print(f"  Работа с базой данных: {db_name}")
+    
+    # 2. ОБНОВЛЕНИЕ ALEMBIC.INI
+    from urllib.parse import quote
+    safe_password = quote(config['POSTGRES_PASSWORD'], safe='')
+    current_db_url = f"postgresql://{config['POSTGRES_USER']}:{safe_password}@{config['POSTGRES_HOST']}:{config['POSTGRES_PORT']}/{db_name}"
+    
+    if not os.path.exists("alembic.ini"):
+        print("  Ошибка: alembic.ini не найден")
+        return False
+    
+    with open("alembic.ini", "r", encoding="utf-8") as f:
+        alembic_content = f.read()
+    
+    import re
+    new_content = re.sub(
+        r'sqlalchemy\.url\s*=.*',
+        f'sqlalchemy.url = {current_db_url}',
+        alembic_content,
+        flags=re.MULTILINE
+    )
+    
+    with open("alembic.ini", "w", encoding="utf-8") as f:
+        f.write(new_content)
+    
+    print(f"  Alembic.ini обновлен для БД: {db_name}")
+    
+    # 3. ПРОВЕРКА ФАЙЛА МИГРАЦИИ
+    import glob
+    migration_files = glob.glob("alembic/versions/*.py")
+    
+    if len(migration_files) == 0:
+        print("  Ошибка: файлы миграций не найдены")
+        return False
+    
+    print(f"  Файлов миграций: {len(migration_files)}")
+    
+    # 4. ВЫПОЛНЕНИЕ МИГРАЦИЙ
+    print("  Запуск миграций...")
+    
+    # Показываем текущий статус миграций
+    print("  Текущий статус миграций:")
+    cmd_current = f'"{venv_python_path}" -m alembic current'
+    run_command(cmd_current, timeout=30)
+    
+    cmd_upgrade = f'"{venv_python_path}" -m alembic upgrade head'
+    print(f"  Выполнение: {venv_python_path} -m alembic upgrade head")
+    
+    if not run_command(cmd_upgrade, timeout=120):
+        print("  Ошибка при выполнении миграций")
+        
+        # Покажем историю для диагностики
+        cmd_history = f'"{venv_python_path}" -m alembic history'
+        print("  История миграций:")
+        run_command(cmd_history, timeout=30)
+        
+        return False
+    
+    print("  Миграции выполнены")
+    
+    # Показываем новый статус
+    print("  Новый статус миграций:")
+    run_command(cmd_current, timeout=30)
+    
+    # 5. ПРОВЕРКА ТАБЛИЦЫ
+    print("  Проверка создания таблицы features...")
+    
+    python_check = f'''
+# -*- coding: utf-8 -*-
+import sys
+from sqlalchemy import create_engine, text
 
-    print("Миграции успешно применены")
-    return True
+# URL для подключения
+db_url = "{current_db_url}"
 
-
+try:
+    print("[INFO] Проверка таблицы features в БД...")
+    engine = create_engine(db_url)
+    
+    with engine.connect() as conn:
+        # Проверка 1: Существует ли таблица
+        result = conn.execute(
+            text("SELECT table_name FROM information_schema.tables WHERE table_name = 'features'")
+        )
+        
+        if result.rowcount > 0:
+            print("[SUCCESS] Таблица 'features' создана!")
+            
+            # Проверка 2: Структура таблицы
+            result = conn.execute(text("""
+                SELECT column_name, data_type, is_nullable
+                FROM information_schema.columns 
+                WHERE table_name = 'features' 
+                ORDER BY ordinal_position
+            """))
+            
+            print("Структура таблицы features:")
+            for row in result:
+                print(f"  - {{row[0]}}: {{row[1]}} (nullable: {{row[2]}})")
+            
+            # Проверка 3: Количество записей
+            result = conn.execute(text("SELECT COUNT(*) FROM features"))
+            count = result.scalar()
+            print(f"Записей в таблице: {{count}}")
+            
+            sys.exit(0)  # Успех
+        else:
+            print("[ERROR] Таблица 'features' не найдена!")
+            print("[INFO] Проверьте, что миграция выполнилась корректно.")
+            sys.exit(1)  # Ошибка
+            
+except Exception as e:
+    print(f"[ERROR] Ошибка проверки: {{e}}")
+    sys.exit(1)
+'''
+    
+    # Создаем временный файл для проверки
+    import tempfile
+    temp_file = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+            f.write(python_check)
+            temp_file = f.name
+        
+        check_cmd = f'"{venv_python_path}" "{temp_file}"'
+        print(f"  Выполнение проверки через SQLAlchemy...")
+        
+        if run_command(check_cmd, timeout=30):
+            print("  Проверка завершена успешно")
+            
+            # 6. ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА через check_db.py
+            print("  Дополнительная проверка через check_db.py...")
+            extra_check = f'"{venv_python_path}" check_db.py'
+            run_command(extra_check, timeout=30)
+        else:
+            print("  Проверка не прошла")
+            print(f"  Проверьте вручную: {venv_python_path} check_db.py")
+        
+        return True
+    except Exception as e:
+        print(f"  Ошибка при проверке: {e}")
+        return False
+    finally:
+        if temp_file and os.path.exists(temp_file):
+            os.unlink(temp_file)
+            
 def get_database_config():
     print("\n" + "="*50)
     print("Настройка подключения к PostgreSQL")
@@ -273,11 +465,13 @@ def install_all_dependencies():
     
     deps = [
         "fastapi>=0.104.1",
-        "uvicorn[standard]>=0.24.0",
-        "geoalchemy2>=0.14.2",
-        "alembic>=1.12.1", 
-        "python-dotenv>=1.0.0",
-        "shapely>=2.0.2"
+    "uvicorn[standard]>=0.24.0",
+    "geoalchemy2>=0.14.2",
+    "alembic>=1.12.1",
+    "python-dotenv>=1.0.0",
+    "shapely>=2.0.2",
+    "jinja2>=3.1.2"
+    "fastapi>=0.104.1",
     ]
     
     cmd = f'"{pip_cmd}" {pip_args} install {" ".join(deps)}'
@@ -296,9 +490,10 @@ def run_in_venv(python_code):
     else:
         python_path = "venv/bin/python"
     
-    # Создание временного файла 
+    # Создание временного файла с явным указанием кодировки UTF-8
     import tempfile
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+        # Добавление строки с указанием кодировки В НАЧАЛО файла
         f.write('# -*- coding: utf-8 -*-\n')
         f.write(python_code)
         temp_file = f.name
@@ -321,7 +516,7 @@ def run_in_venv(python_code):
         os.unlink(temp_file)
 
 def check_postgresql_connection_in_venv(host, port, user, password):
-
+    # Проверка подключения через SQLAlchemy в виртуальном окружении
     print("Проверка подключения к PostgreSQL...")
     
     from urllib.parse import quote
@@ -439,20 +634,25 @@ except Exception as e:
         return False
 
 def main():
+    print("="*50)
     print("Установка GIS Sync System")
+    print("="*50)
     
     # Получение конфигурации БД
     db_config = get_database_config()
     
+    # Создание виртуального окружения
     if not setup_virtualenv():
         print("\nНе удалось создать виртуальное окружение.")
         return False
     
+    # Установка SQLAlchemy и psycopg2 для проверки подключения
     print("\nУстановка SQLAlchemy для проверки подключения...")
     if not install_minimal_dependencies():
         print("\nНе удалось установить SQLAlchemy.")
         return False
     
+    # ПРОВЕРКА ПОДКЛЮЧЕНИЯ через отдельный процесс в venv
     if not check_postgresql_connection_in_venv(
         db_config['host'],
         db_config['port'],

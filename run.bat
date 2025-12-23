@@ -1,28 +1,50 @@
 @echo off
-chcp 65001 >nul
-echo   GIS Sync System - Backend Launcher
+chcp 1251 >nul
 
+echo   GIS Sync System - Backend Launcher
 
 REM Проверка виртуального окружения
 if not exist "venv\" (
     echo [ERROR] Виртуальное окружение не найдено.
     echo.
     echo Запустите сначала установку:
-    echo   python scripts\setup_database.py 
+    echo   python setup.py
     echo.
     pause
     exit /b 1
 )
 
-REM Проверка зависимостей
-if not exist "venv\Scripts\uvicorn.exe" (
-    echo [ERROR] uvicorn не найден в виртуальном окружении.
+REM Проверка Python в venv
+if not exist "venv\Scripts\python.exe" (
+    echo [ERROR] Python в виртуальном окружении не найден.
+    echo.
+    echo Переустановите виртуальное окружение:
+    echo   python setup.py
+    echo.
+    pause
+    exit /b 1
+)
+
+REM Проверка наличия модуля uvicorn
+echo [INFO] Проверка зависимостей...
+venv\Scripts\python -c "import uvicorn" 2>nul
+if errorlevel 1 (
+    echo [ERROR] uvicorn не установлен.
     echo.
     echo Установите зависимости:
     echo   venv\Scripts\pip install uvicorn[standard]
     echo.
     pause
     exit /b 1
+)
+
+REM Проверка .env файла
+if not exist ".env" (
+    echo [WARNING] Файл .env не найден.
+    echo.
+    echo Будет использоваться конфигурация по умолчанию.
+    echo Для настройки запустите: python setup.py
+    echo.
 )
 
 echo [INFO] Запуск FastAPI сервера...
@@ -33,11 +55,17 @@ echo.
 echo [INFO] Для остановки сервера нажмите Ctrl+C
 echo.
 
-REM Запуск сервера
-venv\Scripts\uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+REM Запуск сервера через Python модуль (более надежно)
+venv\Scripts\python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 if %errorlevel% neq 0 (
     echo.
     echo [ERROR] Не удалось запустить сервер.
+    echo.
+    echo Возможные решения:
+    echo 1. Проверьте установку зависимостей: venv\Scripts\pip list
+    echo 2. Переустановите зависимости: venv\Scripts\pip install -r requirements.txt
+    echo 3. Запустите установку заново: python setup.py
+    echo.
     pause
 )
